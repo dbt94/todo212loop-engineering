@@ -1,7 +1,9 @@
 #!/usr/bin/env node
+import { spawn } from 'node:child_process';
 import { cp, mkdir, readFile, writeFile, access } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { printContributorCta } from './contributor-cta.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = path.resolve(__dirname, '..');
@@ -17,7 +19,7 @@ type Pattern =
   | 'changelog-drafter'
   | 'issue-triage';
 
-type Tool = 'grok' | 'claude' | 'codex';
+type Tool = 'grok' | 'claude' | 'codex' | 'opencode';
 
 const PATTERN_STARTERS: Record<Pattern, string> = {
   'daily-triage': 'minimal-loop',
@@ -33,6 +35,7 @@ const TOOL_SUFFIX: Record<Tool, string> = {
   grok: '',
   claude: '-claude',
   codex: '-codex',
+  opencode: '-opencode',
 };
 
 const L2_PATTERNS = new Set<Pattern>(['ci-sweeper', 'dependency-sweeper']);
@@ -43,6 +46,13 @@ const PATTERNS_NEEDING_FIX: Set<Pattern> = new Set([
   'dependency-sweeper',
   'post-merge-cleanup',
 ]);
+
+/**
+ * Patterns that act on human-authored, often underspecified input (issues).
+ * They get the loop-intake skill so the loop clarifies a vague item or escalates
+ * it instead of guessing and burning fix attempts.
+ */
+const PATTERNS_NEEDING_INTAKE: Set<Pattern> = new Set(['issue-triage']);
 
 const STATE_FILES: Record<Pattern, string> = {
   'daily-triage': 'STATE.md',
@@ -68,22 +78,271 @@ const PATTERN_BUDGET: Record<
   'issue-triage': { name: 'Issue Triage', maxRunsPerDay: 12, dailyCap: 80_000, maxSpawnsL1: 0, maxSpawnsL2: 1 },
 };
 
+type FoundryPreset = 'minimal' | 'implementer';
+
+/** Map LE patterns → harness-foundry stack presets (report-only → minimal, fix → implementer). */
+const PATTERN_FOUNDRY_PRESET: Record<Pattern, FoundryPreset> = {
+  'daily-triage': 'minimal',
+  'issue-triage': 'minimal',
+  'changelog-drafter': 'minimal',
+  'pr-babysitter': 'implementer',
+  'ci-sweeper': 'implementer',
+  'dependency-sweeper': 'implementer',
+  'post-merge-cleanup': 'implementer',
+};
+
+const FOUNDRY_SHOWCASE =
+  'https://github.com/cobusgreyling/harness-foundry/blob/main/docs/showcase.md';
+
 function parseArgs(argv: string[]) {
   let pattern: Pattern = 'daily-triage';
   let tool: Tool = 'grok';
   let target = '.';
   let dryRun = false;
+  let withFoundry = false;
+  let withMemory = false;
+  let withFleet = false;
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--pattern' || a === '-p') pattern = argv[++i] as Pattern;
     else if (a === '--tool' || a === '-t') tool = argv[++i] as Tool;
     else if (a === '--dry-run') dryRun = true;
-    else if (a === '--help' || a === '-h') return { help: true as const, pattern, tool, target, dryRun };
+    else if (a === '--with-foundry') withFoundry = true;
+    else if (a === '--with-memory') withMemory = true;
+    else if (a === '--with-fleet') withFleet = true;
+    else if (a === '--help' || a === '-h')
+      return { help: true as const, pattern, tool, target, dryRun, withFoundry, withMemory, withFleet };
     else if (!a.startsWith('-')) target = a;
   }
 
-  return { help: false as const, pattern, tool, target, dryRun };
+  return { help: false as const, pattern, tool, target, dryRun, withFoundry, withMemory, withFleet };
+}
+
+function foundryStackYaml(stackName: string, pattern: Pattern, preset: FoundryPreset): string {
+  if (preset === 'implementer') {
+    return `name: ${stackName}
+version: 1.0.0
+description: "loop-engineering ${pattern} → implementer harness (loop-init --with-foundry)"
+layers:
+  interface:
+    - primitive: model/anthropic
+      config:
+        model: claude-sonnet-4-20250514
+  composition:
+    - primitive: context/state-file
+    - primitive: tools/git-worktree-write
+  execution:
+    - primitive: sandbox/worktree-isolated
+    - primitive: control/token-budget-100k
+  reliability:
+    - primitive: observability/span-per-turn
+    - primitive: recovery/revert-on-test-fail
+    - primitive: emit/outerloop-evidence
+`;
+  }
+
+  return `name: ${stackName}
+version: 1.0.0
+description: "loop-engineering ${pattern} → minimal harness (loop-init --with-foundry)"
+layers:
+  interface:
+    - primitive: model/mock
+  composition:
+    - primitive: context/state-file
+  execution:
+    - primitive: control/token-budget-100k
+    - primitive: sandbox/worktree-isolated
+  reliability:
+    - primitive: observability/span-per-turn
+    - primitive: emit/outerloop-evidence
+`;
+}
+
+/**
+ * Scaffold a harness-foundry stack next to loop files so LE graduates land in
+ * a versioned harness in one command (no foundry package dependency).
+ */
+async function scaffoldFoundry(
+  pattern: Pattern,
+  targetDir: string,
+  dryRun: boolean,
+): Promise<{ preset: FoundryPreset; stackFile: string } | null> {
+  const preset = PATTERN_FOUNDRY_PRESET[pattern];
+  const foundryRoot = path.join(targetDir, '.foundry');
+  const stackFile = path.join(foundryRoot, 'stack.yaml');
+  const stackName = path.basename(targetDir) || 'project';
+
+  if (await exists(stackFile)) {
+    console.log(`  skip: ${stackFile} already exists`);
+    return { preset, stackFile };
+  }
+
+  const files: Array<{ path: string; content: string }> = [
+    { path: stackFile, content: foundryStackYaml(stackName, pattern, preset) },
+    {
+      path: path.join(foundryRoot, 'hooks', 'outerloop.yaml'),
+      content: `enabled: false
+adapter: outerloop
+emitOn:
+  - session.end
+`,
+    },
+    {
+      path: path.join(foundryRoot, 'README.md'),
+      content: `# Harness stack (from loop-engineering)
+
+Scaffolded by \`loop-init --with-foundry\` for pattern **${pattern}** (preset: **${preset}**).
+
+\`\`\`
+loop-engineering  →  harness-foundry  →  outerloop
+   (patterns)         (runtime)          (governance)
+\`\`\`
+
+## Next
+
+\`\`\`bash
+npx @cobusgreyling/harness-foundry validate
+npx @cobusgreyling/harness-foundry run --goal "Verify harness wiring"
+npx @cobusgreyling/harness-foundry evolve report --session <id>
+\`\`\`
+
+Showcase: ${FOUNDRY_SHOWCASE}
+`,
+    },
+    {
+      path: path.join(foundryRoot, 'sessions', '.gitkeep'),
+      content: '',
+    },
+  ];
+
+  for (const f of files) {
+    if (dryRun) {
+      console.log(`  would write: ${f.path}`);
+      continue;
+    }
+    await mkdir(path.dirname(f.path), { recursive: true });
+    await writeFile(f.path, f.content);
+    console.log(`  created: ${path.relative(targetDir, f.path)}`);
+  }
+
+  return { preset, stackFile };
+}
+
+async function scaffoldFleet(
+  targetDir: string,
+  templatesRoot: string,
+  dryRun: boolean,
+) {
+  const registryTemplate = path.join(templatesRoot, 'fleet-registry.md');
+  if (await exists(registryTemplate)) {
+    await copyFile(registryTemplate, path.join(targetDir, 'fleet-registry.md'), dryRun);
+  }
+  const inboxTemplate = path.join(templatesRoot, 'fleet-inbox.md');
+  if (await exists(inboxTemplate)) {
+    await copyFile(inboxTemplate, path.join(targetDir, 'fleet-inbox.md'), dryRun);
+  }
+}
+
+async function scaffoldMemory(
+  targetDir: string,
+  templatesRoot: string,
+  dryRun: boolean,
+) {
+  const tiersTemplate = path.join(templatesRoot, 'memory-tiers.md');
+  const tiersDest = path.join(targetDir, 'memory-tiers.md');
+  if (!(await exists(tiersDest))) {
+    await copyFile(tiersTemplate, tiersDest, dryRun);
+  }
+
+  const budgetTemplate = path.join(templatesRoot, 'memory-budget.md');
+  const budgetDest = path.join(targetDir, 'memory-budget.md');
+  if (!(await exists(budgetDest))) {
+    await copyFile(budgetTemplate, budgetDest, dryRun);
+  }
+}
+
+function printFoundryCta(opts: {
+  pattern: Pattern;
+  tool: Tool;
+  withFoundry: boolean;
+  score: number | null;
+  preset?: FoundryPreset;
+}) {
+  const { pattern, tool, withFoundry, score, preset } = opts;
+  const mapped = preset ?? PATTERN_FOUNDRY_PRESET[pattern];
+  console.log('');
+  if (withFoundry) {
+    console.log(`Harness stack ready (.foundry/, preset: ${mapped} for ${pattern})`);
+    console.log('  npx @cobusgreyling/harness-foundry validate');
+    console.log('  npx @cobusgreyling/harness-foundry run --goal "Verify harness wiring"');
+    console.log(`  Showcase: ${FOUNDRY_SHOWCASE}`);
+    return;
+  }
+
+  const highReady = score !== null && score >= 80;
+  console.log(
+    highReady
+      ? 'Next after Loop Ready 80+: version this loop as a harness'
+      : 'Optional: make this loop a versioned harness (harness-foundry)',
+  );
+  console.log(
+    `  npx @cobusgreyling/loop-init . --pattern ${pattern} --tool ${tool} --with-foundry`,
+  );
+  console.log(
+    `  # or: npx @cobusgreyling/harness-foundry init --from loop-engineering:${pattern}`,
+  );
+  if (highReady) {
+    console.log(`  Showcase: ${FOUNDRY_SHOWCASE}`);
+  }
+}
+
+function printFleetCta(opts: {
+  pattern: Pattern;
+  tool: Tool;
+  withFleet: boolean;
+  score: number | null;
+}) {
+  const { pattern, tool, withFleet, score } = opts;
+  console.log('');
+  if (withFleet) {
+    console.log('Fleet engineering stack ready (fleet-registry.md, fleet-inbox.md)');
+    return;
+  }
+
+  const highReady = score !== null && score >= 80;
+  console.log(
+    highReady
+      ? 'Next after Loop Ready 80+: version this loop for a fleet (fleet-engineering)'
+      : 'Optional: add fleet-engineering for multi-agent populations',
+  );
+  console.log(
+    `  npx @cobusgreyling/loop-init . --pattern ${pattern} --tool ${tool} --with-fleet`,
+  );
+}
+
+function printMemoryCta(opts: {
+  pattern: Pattern;
+  tool: Tool;
+  withMemory: boolean;
+  score: number | null;
+}) {
+  const { pattern, tool, withMemory, score } = opts;
+  console.log('');
+  if (withMemory) {
+    console.log('Memory engineering stack ready (memory-tiers.md, memory-budget.md)');
+    return;
+  }
+
+  const highReady = score !== null && score >= 80;
+  console.log(
+    highReady
+      ? "Next after Loop Ready 80+: version this loop's memory (memory-engineering)"
+      : 'Optional: add memory-engineering for cross-session knowledge',
+  );
+  console.log(
+    `  npx @cobusgreyling/loop-init . --pattern ${pattern} --tool ${tool} --with-memory`,
+  );
 }
 
 async function exists(p: string): Promise<boolean> {
@@ -126,6 +385,7 @@ async function copyTemplateSkill(
     grok: path.join(targetDir, '.grok', 'skills', skillName, 'SKILL.md'),
     claude: path.join(targetDir, '.claude', 'skills', skillName, 'SKILL.md'),
     codex: path.join(targetDir, '.codex', 'skills', skillName, 'SKILL.md'),
+    opencode: path.join(targetDir, 'skills', skillName, 'SKILL.md'),
   };
   const dest = destByTool[tool];
   if (await exists(dest)) return;
@@ -142,6 +402,7 @@ async function copyTemplateVerifier(
     grok: path.join(targetDir, '.grok', 'skills', 'loop-verifier', 'SKILL.md'),
     claude: path.join(targetDir, '.claude', 'agents', 'loop-verifier.md'),
     codex: path.join(targetDir, '.codex', 'agents', 'verifier.toml'),
+    opencode: path.join(targetDir, 'skills', 'loop-verifier', 'SKILL.md'),
   };
   const dest = verifierPaths[tool];
   if (await exists(dest)) return;
@@ -178,6 +439,81 @@ async function copyL2Templates(
   if (L2_PATTERNS.has(pattern) || pattern === 'dependency-sweeper') {
     await copyTemplateVerifier(templatesRoot, targetDir, tool, dryRun);
   }
+}
+
+/** Per-pattern goal seeded into loop-ledger.json for the circuit breaker. */
+const LEDGER_GOAL: Record<Pattern, string> = {
+  'daily-triage': 'Keep the repo healthy and STATE.md current',
+  'pr-babysitter': 'Get the watched PR review-ready and green',
+  'ci-sweeper': 'Get failing CI back to green',
+  'dependency-sweeper': 'Land safe dependency updates',
+  'post-merge-cleanup': 'Clean up regressions from recent merges',
+  'changelog-drafter': 'Draft accurate release notes',
+  'issue-triage': 'Triage the open issue queue',
+};
+
+/**
+ * Readiness level seeded into loop-ledger.json so the loop-guard skill can
+ * resolve a realistic per-run token budget from `loop-cost --json` instead of a
+ * hand-typed number. Fix-capable loops draft changes with a verifier (a human
+ * still merges), so L2 is the right default; tune it in the ledger if a loop
+ * runs unattended (L3) or report-only (L1).
+ */
+const LEDGER_LEVEL: Record<Pattern, string> = {
+  'daily-triage': 'L1',
+  'pr-babysitter': 'L2',
+  'ci-sweeper': 'L2',
+  'dependency-sweeper': 'L2',
+  'post-merge-cleanup': 'L2',
+  'changelog-drafter': 'L1',
+  'issue-triage': 'L1',
+};
+
+/**
+ * Fix-capable loops retry actions, so they need a circuit breaker: scaffold the
+ * loop-guard skill plus a seeded loop-ledger.json wired to `loop-context`.
+ * Report-only patterns (daily-triage, issue-triage, changelog-drafter) don't
+ * retry fixes, so they skip this to keep the scaffold minimal.
+ */
+async function scaffoldCircuitBreaker(
+  pattern: Pattern,
+  tool: Tool,
+  targetDir: string,
+  templatesRoot: string,
+  dryRun: boolean,
+) {
+  if (!PATTERNS_NEEDING_FIX.has(pattern)) return;
+
+  await copyTemplateSkill(templatesRoot, 'SKILL.md.loop-guard', targetDir, tool, 'loop-guard', dryRun);
+
+  const ledgerPath = path.join(targetDir, 'loop-ledger.json');
+  if (await exists(ledgerPath)) return;
+  const seed = `${JSON.stringify(
+    { goal: LEDGER_GOAL[pattern], pattern, level: LEDGER_LEVEL[pattern], attempts: [] },
+    null,
+    2,
+  )}\n`;
+  if (dryRun) {
+    console.log(`  would write: ${ledgerPath}`);
+    return;
+  }
+  await writeFile(ledgerPath, seed);
+  console.log('  created: loop-ledger.json (circuit breaker)');
+}
+
+/**
+ * Scaffold the loop-intake skill for patterns that receive ambiguous human
+ * input, so the loop sharpens the goal (or escalates) before acting on it.
+ */
+async function scaffoldIntake(
+  pattern: Pattern,
+  tool: Tool,
+  targetDir: string,
+  templatesRoot: string,
+  dryRun: boolean,
+) {
+  if (!PATTERNS_NEEDING_INTAKE.has(pattern)) return;
+  await copyTemplateSkill(templatesRoot, 'SKILL.md.loop-intake', targetDir, tool, 'loop-intake', dryRun);
 }
 
 function formatTokenCap(n: number): string {
@@ -273,45 +609,106 @@ async function copyFile(src: string, dest: string, dryRun: boolean) {
   return true;
 }
 
+const OPENCODE_RUN = 'opencode run';
+
 function firstLoopCommand(pattern: Pattern, tool: Tool): string {
   const cmds: Record<Pattern, Record<Tool, string>> = {
     'daily-triage': {
       grok: '/loop 1d Run loop-triage. Update STATE.md. No auto-fix in week one.',
       claude: '/loop 1d $loop-triage — update STATE.md. Report-only week one.',
       codex: 'Automation daily: $loop-triage → update STATE.md. Report-only.',
+      opencode: `${OPENCODE_RUN} "Run loop-triage. Read STATE.md first. Update High Priority and Watch List. No auto-fix in week one." --agent loop-triage`,
     },
     'pr-babysitter': {
       grok: '/loop 10m Run pr-review-triage. Update pr-babysitter-state.md. Worktree + minimal-fix + verifier for allowlisted PRs only. Escalate after 3 attempts.',
       claude: '/loop 10m $pr-review-triage — update pr-babysitter-state.md. No auto-merge.',
       codex: 'Automation 10m: pr-review-triage → pr-babysitter-state.md. No auto-merge.',
+      opencode: `${OPENCODE_RUN} "Run PR babysitter triage. Read pr-babysitter-state.md first. Report only — no code edits." --title "PR babysitter"`,
     },
     'ci-sweeper': {
       grok: '/loop 15m Run ci-triage on failing CI. Update ci-sweeper-state.md. Fix only regressions in worktree. Max 3 attempts.',
       claude: '/loop 15m $ci-triage — update ci-sweeper-state.md. Max 3 fix attempts.',
       codex: 'Automation 15m: ci-triage on CI failures. Max 3 attempts.',
+      opencode: `${OPENCODE_RUN} "Run ci-triage on failing CI. Update ci-sweeper-state.md. Report only in week one."`,
     },
     'dependency-sweeper': {
       grok: '/loop 6h Run dependency-triage. Patch-only auto-fix in worktree + verifier. Escalate majors and denylist.',
       claude: '/loop 6h $dependency-triage — patch-only with verifier. Escalate risky bumps.',
       codex: 'Automation 6h: dependency-triage. Patch-only with verifier.',
+      opencode: `${OPENCODE_RUN} "Run dependency-triage. Update dependency-sweeper-state.md. Report only — escalate majors."`,
     },
     'post-merge-cleanup': {
       grok: '/loop 1d Run post-merge-scan on recent merges. Update post-merge-state.md. Small fixes only in worktree.',
       claude: '/loop 1d $post-merge-scan — update post-merge-state.md. Small fixes only.',
       codex: 'Automation daily: post-merge-scan → post-merge-state.md.',
+      opencode: `${OPENCODE_RUN} "Run post-merge-scan. Update post-merge-state.md. Report only in week one."`,
     },
     'changelog-drafter': {
       grok: '/loop 1d Run changelog-scan on merges since last tag. Produce categorized draft in RELEASE_NOTES_DRAFT.md using draft-release-notes. Update changelog-drafter-state.md. Human review only.',
       claude: '/loop 1d $changelog-scan + draft-release-notes — write RELEASE_NOTES_DRAFT.md and update state. Human approves before publish.',
       codex: 'Automation daily: changelog-scan + draft-release-notes → RELEASE_NOTES_DRAFT.md. Human review.',
+      opencode: `${OPENCODE_RUN} "Run changelog-scan. Draft RELEASE_NOTES_DRAFT.md. Human review only — no publish."`,
     },
     'issue-triage': {
       grok: '/loop 2h Run issue-triage. Update issue-triage-state.md. Propose labels and priority only. No auto-apply. Human reviews the needs-human slice.',
       claude: '/loop 2h $issue-triage — update issue-triage-state.md. Suggest labels on allowlisted areas only. Report mode week one.',
       codex: 'Automation 2h: issue-triage → issue-triage-state.md. Propose only.',
+      opencode: `${OPENCODE_RUN} "Run issue-triage. Update issue-triage-state.md. Propose labels only — no auto-apply."`,
     },
   };
   return cmds[pattern][tool];
+}
+
+async function resolveAuditCli(): Promise<string | null> {
+  const monorepo = path.resolve(PACKAGE_ROOT, '../loop-audit/dist/cli.js');
+  if (await exists(monorepo)) return monorepo;
+  try {
+    const { createRequire } = await import('node:module');
+    const require = createRequire(import.meta.url);
+    const pkg = require.resolve('@cobusgreyling/loop-audit/package.json');
+    return path.join(path.dirname(pkg), 'dist/cli.js');
+  } catch {
+    return null;
+  }
+}
+
+async function runAuditJson(cli: string, targetDir: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('node', [cli, targetDir, '--json'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    child.stdout.on('data', (chunk: Buffer | string) => {
+      stdout += chunk.toString();
+    });
+    child.on('error', reject);
+    child.on('close', () => {
+      if (stdout.trim()) resolve(stdout);
+      else reject(new Error('loop-audit produced no output'));
+    });
+  });
+}
+
+async function runAuditSummary(
+  targetDir: string,
+): Promise<{ score: number; level: string; assessment: string } | null> {
+  const cli = await resolveAuditCli();
+  if (!cli) return null;
+  try {
+    const stdout = await runAuditJson(cli, targetDir);
+    return JSON.parse(stdout) as { score: number; level: string; assessment: string };
+  } catch {
+    return null;
+  }
+}
+
+function formatScoreBar(score: number, width = 20): string {
+  const filled = Math.max(0, Math.min(width, Math.round((score / 100) * width)));
+  return `${'█'.repeat(filled)}${'░'.repeat(width - filled)}  ${score}/100`;
+}
+
+function auditTargetArg(target: string, targetDir: string): string {
+  return target === '.' ? '.' : targetDir;
 }
 
 async function main() {
@@ -321,7 +718,7 @@ async function main() {
     console.log(`loop-init — scaffold loop engineering starters
 
 Usage:
-  loop-init [target-dir] --pattern <name> --tool <grok|claude|codex>
+  loop-init [target-dir] --pattern <name> --tool <grok|claude|codex|opencode> [--with-foundry]
 
 Patterns:
   daily-triage (default)
@@ -333,19 +730,30 @@ Patterns:
   issue-triage (new low-risk issue queue health companion to daily triage)
 
 Options:
-  -p, --pattern   Pattern to scaffold
-  -t, --tool      Tool target (default: grok)
-  --dry-run       Print actions without copying
-  -h, --help      This help
+  -p, --pattern     Pattern to scaffold
+  -t, --tool        Tool target (default: grok)
+  --with-foundry    Also scaffold .foundry/ stack (harness-foundry runtime)
+  --with-memory     Also scaffold memory-engineering tiers and budget
+  --with-fleet      Also scaffold fleet-engineering registry and inbox
+  --dry-run         Print actions without copying
+  -h, --help        This help
+
+Foundry presets (with --with-foundry):
+  report-only patterns → minimal
+  fix-capable patterns → implementer
 
 Examples:
   npx @cobusgreyling/loop-init . --pattern daily-triage --tool grok
-  npx @cobusgreyling/loop-init . -p pr-babysitter -t claude
+  npx @cobusgreyling/loop-init . --pattern daily-triage --tool grok --with-foundry
+  npx @cobusgreyling/loop-init . -p pr-babysitter -t claude --with-foundry
+  npx @cobusgreyling/loop-init . -p daily-triage -t opencode
+  npx @cobusgreyling/loop-init . --with-memory
+  npx @cobusgreyling/loop-init . --with-fleet
 `);
     process.exit(0);
   }
 
-  const { pattern, tool, target, dryRun } = args;
+  const { pattern, tool, target, dryRun, withFoundry, withMemory, withFleet } = args;
 
   const validPatterns = Object.keys(PATTERN_STARTERS) as Pattern[];
   const validTools = Object.keys(TOOL_SUFFIX) as Tool[];
@@ -361,7 +769,7 @@ Examples:
   const targetDir = path.resolve(target);
   const baseStarter = PATTERN_STARTERS[pattern];
   const suffix = TOOL_SUFFIX[tool];
-  const starterName = pattern === 'daily-triage' ? `minimal-loop${suffix}` : baseStarter;
+  const starterName = `${baseStarter}${suffix}`;
   const startersRoot = await resolveBundledOrMonorepo('starters');
   const templatesRoot = await resolveBundledOrMonorepo('templates');
   const starterRoot = path.join(startersRoot, starterName);
@@ -381,38 +789,62 @@ Examples:
 
   console.log(`\nloop-init: ${pattern} → ${targetDir} (${tool})${dryRun ? ' [dry-run]' : ''}\n`);
 
-  const skillRoots = [
-    path.join(effectiveStarter, '.grok', 'skills'),
-    path.join(effectiveStarter, '.claude', 'skills'),
-    path.join(effectiveStarter, '.codex', 'skills'),
-  ];
-
-  for (const skillsDir of skillRoots) {
-    if (!(await exists(skillsDir))) continue;
-    const toolPrefix = skillsDir.includes('.grok')
-      ? '.grok/skills'
-      : skillsDir.includes('.claude')
-        ? '.claude/skills'
-        : '.codex/skills';
-    const entries = await readDirNames(skillsDir);
-    for (const entry of entries) {
-      await copyDir(
-        path.join(skillsDir, entry),
-        path.join(targetDir, toolPrefix, entry),
-        dryRun,
-      );
-    }
-  }
-
-  const agentFiles = [
-    { src: path.join(effectiveStarter, '.claude', 'agents'), dest: path.join(targetDir, '.claude', 'agents') },
-    { src: path.join(effectiveStarter, '.codex', 'agents'), dest: path.join(targetDir, '.codex', 'agents') },
-  ];
-  for (const { src, dest } of agentFiles) {
-    if (await exists(src)) {
-      const entries = await readDirNames(src);
+  if (tool === 'opencode') {
+    const skillsDir = path.join(effectiveStarter, 'skills');
+    if (await exists(skillsDir)) {
+      const entries = await readDirNames(skillsDir);
       for (const entry of entries) {
-        await copyFile(path.join(src, entry), path.join(dest, entry), dryRun);
+        await copyDir(
+          path.join(skillsDir, entry),
+          path.join(targetDir, 'skills', entry),
+          dryRun,
+        );
+      }
+    }
+
+    const agentsMd = path.join(effectiveStarter, 'AGENTS.md');
+    if (await exists(agentsMd)) {
+      await copyFile(agentsMd, path.join(targetDir, 'AGENTS.md'), dryRun);
+    }
+
+    const opencodeJson = path.join(effectiveStarter, 'opencode.json.example');
+    if (await exists(opencodeJson)) {
+      await copyFile(opencodeJson, path.join(targetDir, 'opencode.json'), dryRun);
+    }
+  } else {
+    const skillRoots = [
+      path.join(effectiveStarter, '.grok', 'skills'),
+      path.join(effectiveStarter, '.claude', 'skills'),
+      path.join(effectiveStarter, '.codex', 'skills'),
+    ];
+
+    for (const skillsDir of skillRoots) {
+      if (!(await exists(skillsDir))) continue;
+      const toolPrefix = skillsDir.includes('.grok')
+        ? '.grok/skills'
+        : skillsDir.includes('.claude')
+          ? '.claude/skills'
+          : '.codex/skills';
+      const entries = await readDirNames(skillsDir);
+      for (const entry of entries) {
+        await copyDir(
+          path.join(skillsDir, entry),
+          path.join(targetDir, toolPrefix, entry),
+          dryRun,
+        );
+      }
+    }
+
+    const agentFiles = [
+      { src: path.join(effectiveStarter, '.claude', 'agents'), dest: path.join(targetDir, '.claude', 'agents') },
+      { src: path.join(effectiveStarter, '.codex', 'agents'), dest: path.join(targetDir, '.codex', 'agents') },
+    ];
+    for (const { src, dest } of agentFiles) {
+      if (await exists(src)) {
+        const entries = await readDirNames(src);
+        for (const entry of entries) {
+          await copyFile(path.join(src, entry), path.join(dest, entry), dryRun);
+        }
       }
     }
   }
@@ -434,10 +866,12 @@ Examples:
   }
 
   await copyL2Templates(pattern, tool, targetDir, templatesRoot, dryRun);
+  await scaffoldCircuitBreaker(pattern, tool, targetDir, templatesRoot, dryRun);
   await scaffoldObservability(pattern, tool, targetDir, templatesRoot, dryRun);
+  await scaffoldIntake(pattern, tool, targetDir, templatesRoot, dryRun);
 
   await scaffoldConstraints(targetDir, templatesRoot, tool, dryRun);
-  if (!dryRun && !(await exists(path.join(targetDir, 'AGENTS.md')))) {
+  if (tool !== 'opencode' && !dryRun && !(await exists(path.join(targetDir, 'AGENTS.md')))) {
     const agentsTemplate = `# AGENTS.md
 
 ## Test commands
@@ -452,10 +886,82 @@ npm run lint
     console.log('  created: AGENTS.md (template)');
   }
 
-  console.log('\n=== Next steps ===');
-  console.log(`  npx @cobusgreyling/loop-audit ${target === '.' ? '.' : target} --suggest`);
-  console.log(`  npx @cobusgreyling/loop-cost --pattern ${pattern}`);
-  console.log(`  First loop command (${tool}):\n  ${firstLoopCommand(pattern, tool)}\n`);
+  let foundryPreset: FoundryPreset | undefined;
+  if (withFoundry) {
+    console.log('');
+    console.log('Harness foundry:');
+    const foundry = await scaffoldFoundry(pattern, targetDir, dryRun);
+    foundryPreset = foundry?.preset;
+  }
+
+  if (withMemory) {
+    console.log('');
+    console.log('Memory engineering:');
+    await scaffoldMemory(targetDir, templatesRoot, dryRun);
+  }
+
+  if (withFleet) {
+    console.log('');
+    console.log('Fleet engineering:');
+    await scaffoldFleet(targetDir, templatesRoot, dryRun);
+  }
+
+  const auditArg = auditTargetArg(target, targetDir);
+  let auditScore: number | null = null;
+
+  if (!dryRun) {
+    const audit = await runAuditSummary(targetDir);
+    if (audit) {
+      auditScore = audit.score;
+      console.log('');
+      console.log(`✓ Loop Ready: ${audit.score}/100 (${audit.level})`);
+      console.log(`  ${formatScoreBar(audit.score)}`);
+      console.log(`  ${audit.assessment}`);
+      console.log('');
+      console.log('Paste badge in README:');
+      console.log(`  npx @cobusgreyling/loop-audit ${auditArg} --badge`);
+    } else {
+      console.log('\n=== Loop Ready score ===');
+      console.log(`  npx @cobusgreyling/loop-audit ${auditArg} --suggest`);
+    }
+  }
+
+  if (PATTERNS_NEEDING_FIX.has(pattern)) {
+    console.log('');
+    console.log('Circuit breaker wired (loop-guard skill + loop-ledger.json):');
+    console.log('  npx @cobusgreyling/loop-context --check --ledger loop-ledger.json');
+  }
+
+  if (PATTERNS_NEEDING_INTAKE.has(pattern)) {
+    console.log('');
+    console.log('Intake wired (loop-intake skill): clarify a vague item or escalate before acting.');
+  }
+
+  console.log('');
+  console.log(`First loop (${tool}):`);
+  console.log(`  ${firstLoopCommand(pattern, tool)}`);
+  console.log('');
+  console.log(`Estimate cost: npx @cobusgreyling/loop-cost --pattern ${pattern} --level L1`);
+  printFoundryCta({
+    pattern,
+    tool,
+    withFoundry,
+    score: auditScore,
+    preset: foundryPreset,
+  });
+  printMemoryCta({
+    pattern,
+    tool,
+    withMemory,
+    score: auditScore,
+  });
+  printFleetCta({
+    pattern,
+    tool,
+    withFleet,
+    score: auditScore,
+  });
+  printContributorCta();
 }
 
 async function readDirNames(dir: string): Promise<string[]> {

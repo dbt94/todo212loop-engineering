@@ -12,6 +12,10 @@ export interface PatternCost {
   tokens_noop: number;
   tokens_report: number;
   tokens_action: number;
+  /** Fraction (0.0-1.0) of report/action tokens that are stable, repeated
+   *  content (STATE.md, skills, system prompt) eligible for prompt caching.
+   *  Optional — patterns without it are treated as fully variable (0). */
+  stable_fraction?: number;
   suggested_daily_cap: number;
   early_exit_required: boolean;
 }
@@ -28,11 +32,55 @@ export interface RegistryDoc {
   patterns: RegistryPattern[];
 }
 
+export interface Orchestration {
+  /** Normalized mode string, e.g. 'single', 'maker-checker', 'parallel:3', 'debate:2'. */
+  mode: string;
+  /** Multiplier applied to the action-path token cost. */
+  multiplier: number;
+}
+
+/**
+ * Parse an orchestration spec into a multiplier on the action path.
+ *
+ * The action path (implementer + verifier work) is where multi-agent
+ * orchestration lands; the no-op scan and single triage pass are unaffected.
+ *
+ *   single         1x   one implementer pass, self-checked (default)
+ *   maker-checker  2x   implementer + an independent verifier pass
+ *   parallel:N     N+1  N candidate agents fan out, plus a merge/arbiter pass
+ *   debate:R       1+R  one proposer plus R critique-and-revise rounds
+ */
+export function parseOrchestration(spec: string | undefined): Orchestration {
+  const s = (spec ?? 'single').trim().toLowerCase();
+  if (s === '' || s === 'single') return { mode: 'single', multiplier: 1 };
+  if (s === 'maker-checker') return { mode: 'maker-checker', multiplier: 2 };
+
+  const parallel = s.match(/^parallel:(\d+)$/);
+  if (parallel) {
+    const n = Number(parallel[1]);
+    if (n < 2) throw new Error(`Invalid orchestration: parallel:N needs N>=2 (got ${n}).`);
+    return { mode: `parallel:${n}`, multiplier: n + 1 };
+  }
+
+  const debate = s.match(/^debate:(\d+)$/);
+  if (debate) {
+    const r = Number(debate[1]);
+    if (r < 1) throw new Error(`Invalid orchestration: debate:R needs R>=1 (got ${r}).`);
+    return { mode: `debate:${r}`, multiplier: 1 + r };
+  }
+
+  throw new Error(
+    `Invalid orchestration: ${spec}. Valid: single, maker-checker, parallel:N, debate:R`,
+  );
+}
+
 export interface EstimateInput {
   pattern: RegistryPattern;
   cadence?: string;
   level: ReadinessLevel;
   conservative?: boolean;
+  orchestration?: string;
+  withCaching?: boolean;
 }
 
 export interface EstimateResult {
@@ -44,11 +92,13 @@ export interface EstimateResult {
   tokenCostTier: string;
   suggestedDailyCap: number;
   earlyExitRequired: boolean;
+  orchestration: Orchestration;
   scenarios: {
     noop: { tokensPerRun: number; tokensPerDay: number };
     report: { tokensPerRun: number; tokensPerDay: number };
     action: { tokensPerRun: number; tokensPerDay: number };
     realistic: { tokensPerRun: number; tokensPerDay: number; assumptions: string };
+    caching?: { tokensPerRun: number; tokensPerDay: number; savingsPercent: number };
   };
   warnings: string[];
 }
@@ -124,22 +174,47 @@ function formatTokens(n: number): string {
   return String(n);
 }
 
+// Anthropic prompt caching: cache reads bill at roughly 10% of base input
+// token cost. Only the stable portion of a run's tokens (STATE.md, skills,
+// system prompt — unchanged since the last cache write) benefit; the
+// variable portion (fresh scan results, diffs) still costs full price.
+const CACHE_READ_DISCOUNT = 0.1;
+
+function applyCaching(tokensPerRun: number, stableFraction: number): number {
+  const stable = tokensPerRun * stableFraction;
+  const variable = tokensPerRun - stable;
+  return Math.round(variable + stable * CACHE_READ_DISCOUNT);
+}
+
 export function estimateCost(input: EstimateInput): EstimateResult {
   assertValidLevel(input.level);
   const cadence = input.cadence ?? input.pattern.cadence;
   const runsPerDay = cadenceToRunsPerDay(cadence, input.conservative);
   const { cost, token_cost: tokenCostTier } = input.pattern;
   const mix = realisticMix(input.level, cost.early_exit_required);
+  const orchestration = parseOrchestration(input.orchestration);
+
+  // Orchestration overhead lands on the action path only — the no-op scan and
+  // the single triage pass do not fan out.
+  const actionPerRun = Math.round(cost.tokens_action * orchestration.multiplier);
 
   const noopDay = cost.tokens_noop * runsPerDay;
   const reportDay = cost.tokens_report * runsPerDay;
-  const actionDay = cost.tokens_action * runsPerDay;
+  const actionDay = actionPerRun * runsPerDay;
 
   const realisticPerRun =
     cost.tokens_noop * mix.noop +
     cost.tokens_report * mix.report +
-    cost.tokens_action * mix.action;
+    actionPerRun * mix.action;
   const realisticDay = Math.round(realisticPerRun * runsPerDay);
+
+  let caching: EstimateResult['scenarios']['caching'];
+  if (input.withCaching && cost.stable_fraction) {
+    const cachedPerRun = applyCaching(realisticPerRun, cost.stable_fraction);
+    const cachedDay = Math.round(cachedPerRun * runsPerDay);
+    const savingsPercent = Math.round((1 - cachedPerRun / realisticPerRun) * 100);
+    caching = { tokensPerRun: cachedPerRun, tokensPerDay: cachedDay, savingsPercent };
+  }
 
   const warnings: string[] = [];
   if (cost.early_exit_required) {
@@ -156,6 +231,11 @@ export function estimateCost(input: EstimateInput): EstimateResult {
   if (runsPerDay >= 96) {
     warnings.push(`High cadence (${runsPerDay} runs/day) — verify early-exit is working.`);
   }
+  if (orchestration.multiplier > 2) {
+    warnings.push(
+      `Orchestration ${orchestration.mode} multiplies action cost ${orchestration.multiplier}x — confirm the fan-out or debate depth is justified.`,
+    );
+  }
 
   return {
     patternId: input.pattern.id,
@@ -166,15 +246,17 @@ export function estimateCost(input: EstimateInput): EstimateResult {
     tokenCostTier,
     suggestedDailyCap: cost.suggested_daily_cap,
     earlyExitRequired: cost.early_exit_required,
+    orchestration,
     scenarios: {
       noop: { tokensPerRun: cost.tokens_noop, tokensPerDay: noopDay },
       report: { tokensPerRun: cost.tokens_report, tokensPerDay: reportDay },
-      action: { tokensPerRun: cost.tokens_action, tokensPerDay: actionDay },
+      action: { tokensPerRun: actionPerRun, tokensPerDay: actionDay },
       realistic: {
         tokensPerRun: Math.round(realisticPerRun),
         tokensPerDay: realisticDay,
         assumptions: mix.assumptions,
       },
+      caching,
     },
     warnings,
   };
@@ -187,6 +269,9 @@ export function formatEstimateHuman(r: EstimateResult): string {
   lines.push('═'.repeat(50));
   lines.push(`Cadence: ${r.cadence}  →  ${r.runsPerDay} runs/day`);
   lines.push(`Level: ${r.level}  ·  Registry tier: ${r.tokenCostTier}`);
+  if (r.orchestration.multiplier > 1) {
+    lines.push(`Orchestration: ${r.orchestration.mode}  ·  action x${r.orchestration.multiplier}`);
+  }
   lines.push(`Suggested daily cap: ${formatTokens(r.suggestedDailyCap)} tokens`);
   lines.push('');
   lines.push('Daily token estimates:');
@@ -194,6 +279,9 @@ export function formatEstimateHuman(r: EstimateResult): string {
   lines.push(`  Full triage:         ${formatTokens(r.scenarios.report.tokensPerDay)}  (${formatTokens(r.scenarios.report.tokensPerRun)}/run)`);
   lines.push(`  Action every run:    ${formatTokens(r.scenarios.action.tokensPerDay)}  (${formatTokens(r.scenarios.action.tokensPerRun)}/run)`);
   lines.push(`  Realistic blend:     ${formatTokens(r.scenarios.realistic.tokensPerDay)}  (${r.scenarios.realistic.assumptions})`);
+  if (r.scenarios.caching) {
+    lines.push(`  With prompt caching: ${formatTokens(r.scenarios.caching.tokensPerDay)}  (${r.scenarios.caching.savingsPercent}% reduction vs. realistic blend)`);
+  }
   if (r.warnings.length) {
     lines.push('');
     lines.push('Warnings:');

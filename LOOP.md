@@ -9,7 +9,7 @@ The goal of this repo is to be the canonical, copyable, high-signal collection o
 ### Daily Triage (L1 — automated + report)
 - Cadence: 1d weekdays (`/.github/workflows/daily-triage.yml`)
 - Skill: `loop-triage` (from `skills/` and `starters/minimal-loop`)
-- State: `STATE.md` (updated by workflow; human reviews weekly issue)
+- State: STATE.md (updated by workflow; human reviews weekly issue)
 - Phase: Report-only. Human reviews and decides actions.
 - Handoff: Design decisions, large refactors, new pattern acceptance.
 
@@ -63,6 +63,7 @@ See [docs/multi-loop.md](docs/multi-loop.md). Priority: CI Sweeper → PR Babysi
 - No auto-merge on main except trivial dependency patches (allowlist + verifier)
 - Denylist: showcase HTML/CSS, core primitives docs, audit scoring logic without human review
 - Live loop state: `STATE.md` at repo root
+- `loop-gate check` mechanically enforces the denylist + auto-merge allowlist above from `gate.yaml`; see `tools/loop-gate`
 
 ## How to run locally
 
@@ -71,6 +72,21 @@ node tools/loop-audit/dist/cli.js . --suggest
 npx @cobusgreyling/loop-init . --pattern daily-triage --tool grok  # after npm publish
 bash scripts/before-after-demo.sh
 ```
+
+## Automation status (2026-07-10)
+
+| Loop | Level | Automation | Notes |
+|------|-------|------------|-------|
+| Daily Triage | L1 | ✅ `daily-triage.yml` | Weekdays; updates `STATE.md` + `loop-run-log.md` |
+| Changelog Drafter | L1 | ✅ `changelog-drafter.yml` | Mondays; opens release-prep issue |
+| Star History | L1 | ✅ `update-star-history.yml` | Daily; auto-PR to `main`; needs `STAR_HISTORY_TOKEN` secret (PAT) |
+| Validate + Audit | L1 | ✅ `validate-patterns.yml`, `audit.yml` | On PR + push; readiness score on PRs |
+| Dependabot | L1 | ✅ `.github/dependabot.yml` | Weekly npm (`loop-audit`, `loop-init`) + GitHub Actions |
+| PR Babysitter | L2 | ⏸ Manual | Maintainer `/loop` or `starters/pr-babysitter` — no Action yet |
+| Dependency Sweeper | L2 | ⏸ Dependabot only | Patch PRs via Dependabot; full sweeper starter is manual |
+| CI Sweeper | L2 | ⏸ Partial | Reacts via failing validate/audit; no dedicated retry workflow |
+
+**Next automation candidates:** PR Babysitter on a schedule (read-only triage comment), CI Sweeper workflow_dispatch tied to failed `audit.yml` runs.
 
 ## Evolution
 

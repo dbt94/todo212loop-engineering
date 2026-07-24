@@ -8,7 +8,7 @@ patterns:
     goal: Shepherd PRs through review, CI, rebase, and merge
     cadence: 5m-15m
     risk: medium
-    tools: [grok, claude-code, codex, github-actions]
+    tools: [grok, claude-code, codex, openclaw, opencode, github-actions]
     skills: [pr-review-triage, minimal-fix, rebase-and-clean]
     state: pr-babysitter-state.md
     phases: [discover, triage, fix, verify, notify]
@@ -20,6 +20,7 @@ patterns:
       tokens_noop: 3000
       tokens_report: 80000
       tokens_action: 250000
+      stable_fraction: 0.35
       suggested_daily_cap: 2000000
       early_exit_required: true
 
@@ -29,7 +30,7 @@ patterns:
     goal: Prioritized morning scan of CI, issues, commits, and chat
     cadence: 1d-2h
     risk: low
-    tools: [grok, claude-code, codex, github-actions]
+    tools: [grok, claude-code, codex, openclaw, opencode, github-actions]
     skills: [loop-triage, minimal-fix]
     state: STATE.md
     phases: [report, act-small-wins, escalate]
@@ -41,6 +42,7 @@ patterns:
       tokens_noop: 5000
       tokens_report: 50000
       tokens_action: 200000
+      stable_fraction: 0.35
       suggested_daily_cap: 100000
       early_exit_required: false
 
@@ -50,7 +52,7 @@ patterns:
     goal: React to failing CI with minimal fixes and escalation
     cadence: 5m-15m
     risk: medium
-    tools: [grok, claude-code, codex, github-actions]
+    tools: [grok, claude-code, codex, openclaw, opencode, github-actions]
     skills: [ci-triage, minimal-fix]
     state: ci-sweeper-state.md
     phases: [detect, classify, fix, verify, escalate]
@@ -62,6 +64,7 @@ patterns:
       tokens_noop: 5000
       tokens_report: 50000
       tokens_action: 200000
+      stable_fraction: 0.35
       suggested_daily_cap: 1000000
       early_exit_required: true
 
@@ -71,7 +74,7 @@ patterns:
     goal: Follow-up tech debt and cleanup after merges to main
     cadence: 1d-6h
     risk: low
-    tools: [grok, claude-code, codex, github-actions]
+    tools: [grok, claude-code, codex, openclaw, opencode, github-actions]
     skills: [post-merge-scan, minimal-fix]
     state: post-merge-state.md
     phases: [scan-merges, prioritize, fix-small, ticket-large]
@@ -83,6 +86,7 @@ patterns:
       tokens_noop: 5000
       tokens_report: 40000
       tokens_action: 150000
+      stable_fraction: 0.35
       suggested_daily_cap: 200000
       early_exit_required: false
 
@@ -92,7 +96,7 @@ patterns:
     goal: Discover, safely apply, and verify dependency + vulnerability updates with human gates on risky changes
     cadence: 6h-1d
     risk: medium
-    tools: [grok, claude-code, codex, github-actions]
+    tools: [grok, claude-code, codex, openclaw, opencode, github-actions]
     skills: [dependency-triage, minimal-fix, loop-verifier]
     state: dependency-sweeper-state.md
     phases: [scan, triage-risk, patch-safe, verify-worktree, escalate-risky]
@@ -104,6 +108,7 @@ patterns:
       tokens_noop: 5000
       tokens_report: 60000
       tokens_action: 300000
+      stable_fraction: 0.35
       suggested_daily_cap: 500000
       early_exit_required: true
 
@@ -113,7 +118,7 @@ patterns:
     goal: Scan merged PRs and commits, draft categorized high-quality release notes or CHANGELOG entries for human review
     cadence: 1d
     risk: low
-    tools: [grok, claude-code, codex, github-actions]
+    tools: [grok, claude-code, codex, openclaw, opencode, github-actions]
     skills: [changelog-scan, draft-release-notes, loop-verifier]
     state: changelog-drafter-state.md
     phases: [scan-merges, categorize, draft, review, publish]
@@ -125,6 +130,7 @@ patterns:
       tokens_noop: 5000
       tokens_report: 35000
       tokens_action: 80000
+      stable_fraction: 0.35
       suggested_daily_cap: 100000
       early_exit_required: false
 
@@ -134,7 +140,7 @@ patterns:
     goal: Discover, deduplicate, prioritize and label incoming issues/discussions so the team always has a clean actionable queue. Excellent low-risk companion to Daily Triage.
     cadence: 2h-1d
     risk: low
-    tools: [grok, claude-code, codex, github-actions]
+    tools: [grok, claude-code, codex, openclaw, opencode, github-actions]
     skills: [issue-triage, loop-verifier]
     state: issue-triage-state.md
     phases: [discover, dedupe, score, propose-labels, human-review]
@@ -146,5 +152,6 @@ patterns:
       tokens_noop: 3000
       tokens_report: 30000
       tokens_action: 60000
+      stable_fraction: 0.35
       suggested_daily_cap: 80000
       early_exit_required: false

@@ -8,12 +8,35 @@ title: Loop Engineering — Showcase
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Loop Engineering — Design systems that prompt your agents</title>
-  <meta name="description" content="The practical reference for loop engineering. Patterns, starters, checklists, and tooling for Grok, Claude Code, and Codex.">
+  <meta name="description" content="The practical reference for loop engineering. Patterns, starters, checklists, and tooling for Grok, Claude Code, Codex, OpenClaw, and Opencode.">
   <meta property="og:title" content="Loop Engineering">
-  <meta property="og:description" content="Stop prompting. Start designing loops.">
+  <meta property="og:description" content="Stop prompting. Design the loop. Get a score. Two npx commands.">
   <meta property="og:image" content="https://raw.githubusercontent.com/cobusgreyling/loop-engineering/main/assets/visuals/loop-engineering-social-banner.jpg">
   <link rel="stylesheet" href="{{ site.baseurl }}/assets/css/showcase.css">
   <link rel="icon" href="https://raw.githubusercontent.com/cobusgreyling/loop-engineering/main/assets/visuals/loop-engineering-logo.svg">
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "dark",
+      securityLevel: "loose",
+      themeVariables: {
+        background: "#111a28",
+        primaryColor: "#132235",
+        primaryTextColor: "#e8edf5",
+        primaryBorderColor: "#3ee8c5",
+        lineColor: "#5b9dff",
+        secondaryColor: "#0d1420",
+        tertiaryColor: "#111a28",
+        textColor: "#e8edf5",
+        clusterBkg: "#0d1420",
+        clusterBorder: "#2a3b52",
+        edgeLabelBackground: "#111a28",
+        fontFamily: "SF Pro Display, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif",
+      },
+    });
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
 
@@ -38,6 +61,7 @@ title: Loop Engineering — Showcase
       <ul class="nav-links">
         <li><a href="#patterns">Patterns</a></li>
         <li><a href="#primitives">Primitives</a></li>
+        <li><a href="#architecture">Architecture</a></li>
         <li><a href="#interactive">Picker</a></li>
         <li><a href="#start">Get Started</a></li>
         <li><a href="https://github.com/cobusgreyling/loop-engineering/blob/main/docs/QUICKSTART.md">Quickstart</a></li>
@@ -52,28 +76,30 @@ title: Loop Engineering — Showcase
 
 <header class="hero wrap">
   <div class="badge">Open source · Tool-agnostic · Production-ready · L3 dogfood · 7 patterns · Interactive tools</div>
-  <h1>Design the system<br>that prompts your agents</h1>
+  <h1>Stop prompting.<br>Design the loop.<br>Get a score.</h1>
   <p class="lead">
-    Loop engineering moves you from "I prompt → agent responds → I prompt again"
-    to "I design the autonomous system that discovers work, verifies results, and drives progress."
+    Run one command in any repo. <code>loop-init</code> scaffolds your loop and prints your <strong>Loop Ready</strong> score plus the first run line.
   </p>
+  <div class="code-block" style="max-width:720px;margin:0 auto 24px;">
+    <div class="code-header">
+      <div class="code-dots"><span></span><span></span><span></span></div>
+      <span>terminal — try now</span>
+      <button onclick="copyNpxInit()" class="copy-btn">Copy</button>
+    </div>
+    <pre>npx @cobusgreyling/loop-init .</pre>
+  </div>
   <div class="hero-cta">
-    <a href="https://github.com/cobusgreyling/loop-engineering/tree/main/starters/minimal-loop" class="btn btn-primary">Clone a Starter →</a>
+    <a href="#start" class="btn btn-primary">Try in 60 seconds →</a>
+    <a href="https://github.com/cobusgreyling/loop-engineering/blob/main/docs/QUICKSTART.md" class="btn btn-ghost">Quickstart</a>
     <a href="https://cobusgreyling.substack.com/p/loop-engineering" class="btn btn-ghost">Read the Essay</a>
-    <a href="https://github.com/cobusgreyling/loop-engineering/blob/main/docs/primitives-matrix.md" class="btn btn-ghost">Primitives Matrix</a>
     <a href="https://cobusgreyling.github.io/goal-engineering/" class="btn btn-ghost">Goal Engineering</a>
   </div>
-  <p style="text-align:center; margin-top:-12px; margin-bottom:32px; font-size:0.9rem; color:var(--text-muted);">
-    Or try instantly: <code style="background:#050810;padding:2px 6px;border-radius:4px;">npx @cobusgreyling/loop-init . --pattern daily-triage --tool grok</code>
-    &nbsp; <button onclick="copyNpxInit()" class="copy-btn" style="vertical-align:middle;">Copy</button>
-    &nbsp;&nbsp; <code style="background:#050810;padding:2px 6px;border-radius:4px;">npx @cobusgreyling/loop-audit . --suggest</code>
-    <button onclick="copyNpxAudit()" class="copy-btn" style="vertical-align:middle;">Copy</button>
-  </p>
   <img
     class="hero-img"
-    src="https://raw.githubusercontent.com/cobusgreyling/loop-engineering/main/assets/visuals/loop-engineering-social-banner.jpg"
-    alt="Loop Engineering — Design the system that prompts your agents"
+    src="https://raw.githubusercontent.com/cobusgreyling/loop-engineering/main/assets/visuals/loop-audit-demo.gif"
+    alt="Loop Ready score climbs from 10 to 100"
     loading="lazy"
+    style="margin-top:24px;"
   />
 </header>
 
@@ -125,7 +151,7 @@ title: Loop Engineering — Showcase
 <section id="primitives" class="wrap">
   <p class="section-label">Building blocks</p>
   <h2 class="section-title">Five primitives + memory</h2>
-  <p class="section-desc">The same shape works in Grok, Claude Code, Codex, and OpenClaw. Tool names differ; capabilities converge.</p>
+  <p class="section-desc">The same shape works in Grok, Claude Code, Codex, OpenClaw, Opencode, and Actions. Tool names differ; capabilities converge.</p>
   <div class="primitives">
     <div class="primitive">
       <div class="icon">⏱</div>
@@ -163,10 +189,155 @@ title: Loop Engineering — Showcase
     <span class="tool-pill claude">Claude Code</span>
     <span class="tool-pill codex">Codex</span>
     <span class="tool-pill openclaw">OpenClaw</span>
+    <span class="tool-pill opencode">Opencode</span>
     <span class="tool-pill">GitHub Actions</span>
   </div>
   <p style="text-align: center; margin-top: 24px;">
     <a href="https://github.com/cobusgreyling/loop-engineering/blob/main/docs/primitives-matrix.md">Full cross-tool matrix →</a>
+  </p>
+</section>
+
+<section id="architecture" class="wrap">
+  <p class="section-label">Deeper architecture</p>
+  <h2 class="section-title">How one run actually moves</h2>
+  <p class="section-desc">The actor-level sequence within a run, the states it passes through, how the three autonomy levels relate, and how the tools in this repo map onto the primitives above.</p>
+  <div class="diagram-list">
+    <div class="pattern-card diagram-card">
+      <div class="tag">Sequence</div>
+      <h3>One loop cycle</h3>
+      <pre class="mermaid">
+sequenceDiagram
+    actor Eng as Engineer
+    participant Sched as Scheduler
+    participant Skill as Triage Skill
+    participant State as STATE.md / Memory
+    participant WT as Worktree
+    participant Maker as Implementer Agent
+    participant Check as Verifier Agent
+    participant MCP as MCP / Git / Tickets
+    participant Gate as Human Gate
+
+    Sched->>Skill: Fire pattern (e.g. daily-triage)
+    Skill->>State: Read goals + last run + budget
+    State-->>Skill: Context snapshot
+    Skill->>WT: Create isolated worktree
+    WT-->>Skill: worktree path
+    Skill->>Maker: Task with skills + constraints
+    Maker->>Maker: Implement change in worktree
+    Maker->>Check: Hand off patch
+    Check->>Check: Run tests + policy gates
+
+    alt Verify pass and budget OK
+        Check->>MCP: Open PR or update ticket
+        MCP-->>Gate: PR link + summary
+        Gate->>Gate: Safe and allowlisted?
+        alt Safe auto-path
+            Gate->>MCP: Approve merge or leave L1 report
+            MCP->>State: Write run outcome
+        else Risky or ambiguous
+            Gate->>Eng: Escalate with full context
+            Eng->>MCP: Decide / override
+            MCP->>State: Write decision + outcome
+        end
+    else Verify fail or budget exceeded
+        Check->>State: Log failure mode
+        Check->>Eng: Report only, no auto-merge
+    end
+      </pre>
+    </div>
+    <div class="pattern-card diagram-card">
+      <div class="tag">State</div>
+      <h3>Run lifecycle</h3>
+      <pre class="mermaid">
+stateDiagram-v2
+    [*] --> Scheduled
+    Scheduled --> LoadingContext: cadence fire
+    LoadingContext --> BlockedBudget: budget exceeded
+    LoadingContext --> RunningTriage: context OK
+    RunningTriage --> WorkingInWorktree: task selected
+    RunningTriage --> IdleNoop: nothing to do
+    WorkingInWorktree --> Verifying: implementer done
+    Verifying --> AwaitingHumanGate: verify pass + risky
+    Verifying --> Failed: verify fail
+    AwaitingHumanGate --> Applied: human or allowlist approve
+    AwaitingHumanGate --> Rejected: human reject
+    Applied --> Logged
+    Failed --> Logged
+    Rejected --> Logged
+    BlockedBudget --> Logged
+    IdleNoop --> Logged
+    Logged --> [*]
+      </pre>
+    </div>
+    <div class="pattern-card diagram-card">
+      <div class="tag">State</div>
+      <h3>Autonomy levels L1-L3</h3>
+      <pre class="mermaid">
+stateDiagram-v2
+    [*] --> L1_ReportOnly
+    L1_ReportOnly --> L2_Assisted: audit score up + human OK
+    L2_Assisted --> L3_Unattended: denylist + budget + gates proven
+    L3_Unattended --> L2_Assisted: incident or cost spike
+    L2_Assisted --> L1_ReportOnly: kill switch
+    L3_Unattended --> L1_ReportOnly: kill switch
+      </pre>
+    </div>
+    <div class="pattern-card diagram-card">
+      <div class="tag">Architecture</div>
+      <h3>Stack: primitives + tools</h3>
+      <pre class="mermaid">
+flowchart TB
+    subgraph Human["Engineer / Owner"]
+        Design[Design LOOP.md patterns]
+        Gate[Human gate + kill switch]
+        Review[Read PRs + reports]
+    end
+
+    subgraph Control["Control plane"]
+        Sched[Automations / Scheduling]
+        Patterns[patterns/registry.yaml]
+        Cost[loop-cost: estimate spend]
+    end
+
+    subgraph Memory["Durable memory"]
+        State[STATE.md]
+        LoopDoc[LOOP.md]
+        Context[loop-context: prune, inject, circuit breaker]
+        Sync[loop-sync]
+    end
+
+    subgraph Execution["Execution plane"]
+        WT[loop-worktree: isolated attempts + locks]
+        Maker[Implementer sub-agent]
+        Verifier[Verifier sub-agent]
+    end
+
+    subgraph Tooling["CLIs + connectors"]
+        Init[loop-init: scaffold]
+        Audit[loop-audit: readiness score]
+        MCP[MCP server: read-only policy + tools]
+    end
+
+    Design --> Patterns
+    Init --> State
+    Init --> LoopDoc
+    Sched --> Patterns
+    Patterns --> Cost
+    Cost --> Context
+    Patterns --> WT
+    State <--> Sync
+    WT --> Maker
+    Maker --> Verifier
+    Verifier --> Context
+    Context --> Gate
+    Verifier --> MCP
+    Gate --> Review
+    Audit --> Design
+      </pre>
+    </div>
+  </div>
+  <p style="text-align: center; margin-top: 24px;">
+    <a href="https://github.com/cobusgreyling/loop-engineering/blob/main/docs/architecture-diagrams.md">Copy-friendly Mermaid source →</a>
   </p>
 </section>
 
@@ -446,6 +617,27 @@ npx @cobusgreyling/loop-audit . --suggest
   </div>
 </div>
 
+<section id="telemetry" class="wrap">
+  <p class="section-label">Dogfooding</p>
+  <h2 class="section-title">Live Telemetry</h2>
+  <p class="section-desc">Machine-readable data rendered directly from <a href="https://github.com/cobusgreyling/loop-engineering/blob/main/loop-run-log.md"><code>loop-run-log.md</code></a>. This repo runs loops.</p>
+  
+  <div class="telemetry-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; margin-top: 32px; margin-bottom: 40px;">
+    <div class="card" style="padding: 20px; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 8px;">
+      <h3 style="font-size: 1rem; margin-bottom: 16px; color: var(--text-muted);">Loop Readiness Score</h3>
+      <canvas id="scoreChart" height="200"></canvas>
+    </div>
+    <div class="card" style="padding: 20px; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 8px;">
+      <h3 style="font-size: 1rem; margin-bottom: 16px; color: var(--text-muted);">Cumulative Tokens (Estimate)</h3>
+      <canvas id="tokenChart" height="200"></canvas>
+    </div>
+    <div class="card" style="padding: 20px; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 8px;">
+      <h3 style="font-size: 1rem; margin-bottom: 16px; color: var(--text-muted);">Automated vs Escalated Runs</h3>
+      <canvas id="escalationChart" height="200"></canvas>
+    </div>
+  </div>
+</section>
+
 <section id="adopters" class="wrap">
   <p class="section-label">Community</p>
   <h2 class="section-title">Adopters</h2>
@@ -480,6 +672,11 @@ npx @cobusgreyling/loop-audit . --suggest
       <p class="adopter-meta">Issue Triage + Daily Triage · Grok · <strong>L1</strong></p>
       <p class="adopter-note">Propose labels only week one; pairs with morning STATE.md triage.</p>
     </article>
+    <article class="adopter-card card">
+      <h4><a href="https://github.com/caioribeiroclw-pixel/pluribus">Pluribus</a></h4>
+      <p class="adopter-meta">Daily Triage · Issue Triage · Mixed (OpenClaw) · <strong>L2</strong></p>
+      <p class="adopter-note">Hourly market/adoption research loop; durable state in control plane &amp; evidence boundaries.</p>
+    </article>
     <article class="adopter-card card adopter-placeholder">
       <h4>Your project here</h4>
       <p class="adopter-meta">Pattern · Tool · Level</p>
@@ -508,7 +705,7 @@ npx @cobusgreyling/loop-audit . --suggest
 <script>
 // Copy helpers for hero
 function copyNpxInit() {
-  const txt = 'npx @cobusgreyling/loop-init . --pattern daily-triage --tool grok';
+  const txt = 'npx @cobusgreyling/loop-init .';
   navigator.clipboard.writeText(txt).then(() => {
     const b = event.currentTarget; // best effort
   });
@@ -853,11 +1050,102 @@ function setupMobileNav() {
   });
 }
 
+async function renderTelemetry() {
+  try {
+    const res = await fetch('https://raw.githubusercontent.com/cobusgreyling/loop-engineering/main/loop-run-log.md');
+    const text = await res.text();
+    
+    // Parse JSON lines from the markdown file
+    const lines = text.split('\n');
+    const data = [];
+    for (const line of lines) {
+      if (line.trim().startsWith('{')) {
+        try {
+          data.push(JSON.parse(line));
+        } catch (e) {}
+      }
+    }
+    
+    if (data.length === 0) return;
+    
+    // X-axis: dates
+    const labels = data.map(d => new Date(d.run_id).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
+    
+    const scores = data.map(d => d.readiness_score || 0);
+    const tokens = data.map((d, i) => {
+      let sum = 0;
+      for (let j = 0; j <= i; j++) sum += (data[j].tokens_estimate || 0);
+      return sum;
+    });
+    const automatedRuns = data.map(d => d.outcome === 'escalated' ? 0 : 1);
+    const escalatedRuns = data.map(d => d.outcome === 'escalated' ? 1 : 0);
+    
+    // Chart options helpers
+    const chartOpts = (yCallback) => ({
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { min: 0, grid: { color: '#2a3b52' }, ticks: { color: '#8e9baebd', callback: yCallback } },
+        x: { grid: { display: false }, ticks: { color: '#8e9baebd', maxTicksLimit: 10 } }
+      }
+    });
+
+    const ctxScore = document.getElementById('scoreChart');
+    if (ctxScore) {
+      new Chart(ctxScore, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{ data: scores, borderColor: '#3ee8c5', backgroundColor: 'rgba(62, 232, 197, 0.1)', borderWidth: 2, tension: 0.1, fill: true }]
+        },
+        options: { ...chartOpts(), scales: { ...chartOpts().scales, y: { ...chartOpts().scales.y, max: 100 } } }
+      });
+    }
+
+    const ctxToken = document.getElementById('tokenChart');
+    if (ctxToken) {
+      new Chart(ctxToken, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{ data: tokens, borderColor: '#5b9dff', backgroundColor: 'rgba(91, 157, 255, 0.15)', borderWidth: 2, tension: 0.3, fill: true }]
+        },
+        options: chartOpts(v => v >= 1000 ? (v/1000) + 'k' : v)
+      });
+    }
+
+    const ctxEscalation = document.getElementById('escalationChart');
+    if (ctxEscalation) {
+      new Chart(ctxEscalation, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            { label: 'Automated', data: automatedRuns, backgroundColor: '#3ee8c5' },
+            { label: 'Escalated', data: escalatedRuns, backgroundColor: '#ffb347' }
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { stacked: true, grid: { display: false }, ticks: { color: '#8e9baebd', maxTicksLimit: 10 } },
+            y: { stacked: true, beginAtZero: true, grid: { color: '#2a3b52' }, ticks: { color: '#8e9baebd', stepSize: 1 } }
+          }
+        }
+      });
+    }
+  } catch (e) {
+    console.error('Failed to render telemetry:', e);
+  }
+}
+
 // Boot
 document.addEventListener('DOMContentLoaded', () => {
   setupMobileNav();
   setupPatternPicker();
   setupSimulator();
+  renderTelemetry();
 });
 </script>
 

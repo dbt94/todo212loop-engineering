@@ -52,7 +52,7 @@ npm run build
 npm publish --access public
 ```
 
-## Signals Checked (v1.4+)
+## Signals Checked (v1.7+)
 
 | Signal                  | Notes |
 |-------------------------|-------|
@@ -70,7 +70,17 @@ npm publish --access public
 | loop-run-log.md         | Append-only run history |
 | LOOP.md budget section  | Cadence limits documented in config |
 | loop-budget skill       | Runtime budget guard |
+| Least-privilege tool scope | `allowed-tools` in SKILL.md, or documented tool/MCP scopes (agents get only what their role needs) |
+| Stall / no-progress detection | loop-context circuit breaker, a ledger, or a documented max-attempts / no-progress rule |
+| Human-escalation path   | LOOP.md / safety docs define when to stop and hand off to a human |
 | **loopActivity (v1.4)** | **Dynamic proof**: "Last run" timestamps in state, loop-related git commits, scheduled workflows, run logs |
+| **Harness Runtime (v1.7)** | `.foundry/stack.yaml`, lock, sessions/traces, outerloop emit, host integrate — LE → [harness-foundry](https://github.com/cobusgreyling/harness-foundry) funnel |
+
+When score ≥ 80 and no `.foundry/stack.yaml`, audit recommends:
+
+```bash
+npx @cobusgreyling/loop-init . --with-foundry
+```
 
 L3 requires verifier + state + cost observability (budget + run log + LOOP.md budget) **and** proven loop activity (not just files on disk).
 

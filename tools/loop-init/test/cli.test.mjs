@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, access } from 'node:fs/promises';
+import { mkdtemp, rm, access, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
@@ -22,6 +22,7 @@ test('bundle-assets tolerates concurrent rebuilds', async () => {
 test('loop-init --help exits 0', async () => {
   const { stdout } = await exec('node', [CLI, '--help']);
   assert.match(stdout, /changelog-drafter/);
+  assert.match(stdout, /opencode/);
 });
 
 test('loop-init dry-run scaffolds daily-triage', async () => {
@@ -43,6 +44,27 @@ test('loop-init dry-run scaffolds daily-triage', async () => {
   }
 });
 
+test('loop-init prints Loop Ready score after scaffold', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'loop-init-audit-'));
+  try {
+    const { stdout } = await exec('node', [
+      CLI,
+      dir,
+      '--pattern',
+      'daily-triage',
+      '--tool',
+      'grok',
+    ]);
+    assert.match(stdout, /Loop Ready:/);
+    assert.match(stdout, /\/100/);
+    assert.match(stdout, /--badge/);
+    assert.match(stdout, /Contribute \(~15 min tasks\):/);
+    assert.match(stdout, /discussions\/123/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('loop-init scaffolds issue-triage with bundled assets', async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'loop-init-'));
   try {
@@ -52,6 +74,27 @@ test('loop-init scaffolds issue-triage with bundled assets', async () => {
     await access(path.join(dir, '.grok', 'skills', 'loop-verifier', 'SKILL.md'));
     await access(path.join(dir, 'loop-budget.md'));
     await access(path.join(dir, 'loop-run-log.md'));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('loop-init scaffolds loop-intake for issue-triage', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'loop-init-intake-'));
+  try {
+    const { stdout } = await exec('node', [CLI, dir, '--pattern', 'issue-triage', '--tool', 'grok']);
+    await access(path.join(dir, '.grok', 'skills', 'loop-intake', 'SKILL.md'));
+    assert.match(stdout, /Intake wired/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('loop-init does NOT scaffold loop-intake for report-only daily-triage', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'loop-init-no-intake-'));
+  try {
+    await exec('node', [CLI, dir, '--pattern', 'daily-triage', '--tool', 'grok']);
+    await assert.rejects(() => access(path.join(dir, '.grok', 'skills', 'loop-intake', 'SKILL.md')));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -71,6 +114,22 @@ test('loop-init rejects unknown tool', async () => {
   );
 });
 
+test('loop-init scaffolds daily-triage for opencode', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'loop-init-opencode-'));
+  try {
+    await exec('node', [CLI, dir, '--pattern', 'daily-triage', '--tool', 'opencode']);
+    await access(path.join(dir, 'STATE.md'));
+    await access(path.join(dir, 'LOOP.md'));
+    await access(path.join(dir, 'AGENTS.md'));
+    await access(path.join(dir, 'opencode.json'));
+    await access(path.join(dir, 'skills', 'loop-triage', 'SKILL.md'));
+    await access(path.join(dir, 'loop-budget.md'));
+    await access(path.join(dir, 'loop-run-log.md'));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('loop-init scaffolds ci-sweeper with bundled assets', async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'loop-init-'));
   try {
@@ -85,4 +144,187 @@ test('loop-init scaffolds ci-sweeper with bundled assets', async () => {
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test('loop-init scaffolds circuit breaker (loop-guard + ledger) for fix patterns', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'loop-init-cb-'));
+  try {
+    await exec('node', [CLI, dir, '--pattern', 'ci-sweeper', '--tool', 'grok']);
+    await access(path.join(dir, '.grok', 'skills', 'loop-guard', 'SKILL.md'));
+    const ledger = JSON.parse(await readFile(path.join(dir, 'loop-ledger.json'), 'utf8'));
+    assert.equal(typeof ledger.goal, 'string');
+    assert.ok(ledger.goal.length > 0);
+    assert.equal(ledger.pattern, 'ci-sweeper');
+    assert.match(ledger.level, /^L[123]$/);
+    assert.deepEqual(ledger.attempts, []);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('loop-init scaffolds circuit breaker for pr-babysitter (opencode paths)', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'loop-init-cb-oc-'));
+  try {
+    await exec('node', [CLI, dir, '--pattern', 'pr-babysitter', '--tool', 'opencode']);
+    await access(path.join(dir, 'skills', 'loop-guard', 'SKILL.md'));
+    await access(path.join(dir, 'loop-ledger.json'));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('loop-init does NOT scaffold circuit breaker for report-only daily-triage', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'loop-init-nocb-'));
+  try {
+    await exec('node', [CLI, dir, '--pattern', 'daily-triage', '--tool', 'grok']);
+    await assert.rejects(() => access(path.join(dir, 'loop-ledger.json')));
+    await assert.rejects(() => access(path.join(dir, '.grok', 'skills', 'loop-guard', 'SKILL.md')));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('loop-init prints foundry CTA without --with-foundry', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'loop-init-cta-'));
+  try {
+    const { stdout } = await exec('node', [CLI, dir, '--pattern', 'daily-triage', '--tool', 'grok']);
+    assert.match(stdout, /--with-foundry/);
+    assert.match(stdout, /harness-foundry/);
+    await assert.rejects(() => access(path.join(dir, '.foundry', 'stack.yaml')));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('loop-init --with-foundry scaffolds minimal stack for daily-triage', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'loop-init-foundry-'));
+  try {
+    const { stdout } = await exec('node', [
+      CLI,
+      dir,
+      '--pattern',
+      'daily-triage',
+      '--tool',
+      'grok',
+      '--with-foundry',
+    ]);
+    await access(path.join(dir, '.foundry', 'stack.yaml'));
+    await access(path.join(dir, '.foundry', 'hooks', 'outerloop.yaml'));
+    await access(path.join(dir, '.foundry', 'README.md'));
+    const stack = await readFile(path.join(dir, '.foundry', 'stack.yaml'), 'utf8');
+    assert.match(stack, /model\/mock/);
+    assert.match(stack, /emit\/outerloop-evidence/);
+    assert.match(stdout, /Harness stack ready/);
+    assert.match(stdout, /preset: minimal/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('loop-init --with-foundry scaffolds implementer stack for ci-sweeper', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'loop-init-foundry-impl-'));
+  try {
+    const { stdout } = await exec('node', [
+      CLI,
+      dir,
+      '--pattern',
+      'ci-sweeper',
+      '--tool',
+      'grok',
+      '--with-foundry',
+    ]);
+    const stack = await readFile(path.join(dir, '.foundry', 'stack.yaml'), 'utf8');
+    assert.match(stack, /model\/anthropic/);
+    assert.match(stack, /tools\/git-worktree-write/);
+    assert.match(stack, /recovery\/revert-on-test-fail/);
+    assert.match(stdout, /preset: implementer/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('loop-init --help documents --with-foundry', async () => {
+  const { stdout } = await exec('node', [CLI, '--help']);
+  assert.match(stdout, /--with-foundry/);
+  assert.match(stdout, /harness-foundry|implementer|minimal/);
+});
+
+test('loop-init prints memory CTA without --with-memory', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'loop-init-mem-cta-'));
+  try {
+    const { stdout } = await exec('node', [CLI, dir, '--pattern', 'daily-triage', '--tool', 'grok']);
+    assert.match(stdout, /--with-memory/);
+    assert.match(stdout, /memory-engineering/);
+    await assert.rejects(() => access(path.join(dir, 'memory-tiers.md')));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('loop-init --with-memory scaffolds tiers and budget', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'loop-init-memory-'));
+  try {
+    const { stdout } = await exec('node', [
+      CLI,
+      dir,
+      '--pattern',
+      'daily-triage',
+      '--tool',
+      'grok',
+      '--with-memory',
+    ]);
+    await access(path.join(dir, 'memory-tiers.md'));
+    await access(path.join(dir, 'memory-budget.md'));
+    const tiers = await readFile(path.join(dir, 'memory-tiers.md'), 'utf8');
+    assert.match(tiers, /Working Memory/);
+    assert.match(stdout, /Memory engineering stack ready/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('loop-init --help documents --with-memory', async () => {
+  const { stdout } = await exec('node', [CLI, '--help']);
+  assert.match(stdout, /--with-memory/);
+  assert.match(stdout, /memory-engineering tiers and budget/);
+});
+
+test('loop-init prints fleet CTA without --with-fleet', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'loop-init-fleet-cta-'));
+  try {
+    const { stdout } = await exec('node', [CLI, dir, '--pattern', 'daily-triage', '--tool', 'grok']);
+    assert.match(stdout, /--with-fleet/);
+    assert.match(stdout, /fleet-engineering/);
+    await assert.rejects(() => access(path.join(dir, 'fleet-registry.md')));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('loop-init --with-fleet scaffolds registry and inbox', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'loop-init-fleet-'));
+  try {
+    const { stdout } = await exec('node', [
+      CLI,
+      dir,
+      '--pattern',
+      'daily-triage',
+      '--tool',
+      'grok',
+      '--with-fleet',
+    ]);
+    await access(path.join(dir, 'fleet-registry.md'));
+    await access(path.join(dir, 'fleet-inbox.md'));
+    const registry = await readFile(path.join(dir, 'fleet-registry.md'), 'utf8');
+    assert.match(registry, /Fleet Registry/);
+    assert.match(stdout, /Fleet engineering stack ready/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('loop-init --help documents --with-fleet', async () => {
+  const { stdout } = await exec('node', [CLI, '--help']);
+  assert.match(stdout, /--with-fleet/);
+  assert.match(stdout, /fleet-engineering registry and inbox/);
 });

@@ -13,6 +13,10 @@
   <a href="https://www.npmjs.com/package/@cobusgreyling/loop-audit"><img src="https://img.shields.io/npm/v/@cobusgreyling/loop-audit?label=loop-audit" alt="loop-audit npm"></a>
   <a href="https://www.npmjs.com/package/@cobusgreyling/loop-init"><img src="https://img.shields.io/npm/v/@cobusgreyling/loop-init?label=loop-init" alt="loop-init npm"></a>
   <a href="https://www.npmjs.com/package/@cobusgreyling/loop-cost"><img src="https://img.shields.io/npm/v/@cobusgreyling/loop-cost?label=loop-cost" alt="loop-cost npm"></a>
+  <a href="https://www.npmjs.com/package/@cobusgreyling/loop-sync"><img src="https://img.shields.io/npm/v/@cobusgreyling/loop-sync?label=loop-sync" alt="loop-sync npm"></a>
+  <a href="https://www.npmjs.com/package/@cobusgreyling/loop-context"><img src="https://img.shields.io/npm/v/@cobusgreyling/loop-context?label=loop-context" alt="loop-context npm"></a>
+  <a href="https://www.npmjs.com/package/@cobusgreyling/loop-mcp-server"><img src="https://img.shields.io/npm/v/@cobusgreyling/loop-mcp-server?label=loop-mcp-server" alt="loop-mcp-server npm"></a>
+  <a href="https://www.npmjs.com/package/@cobusgreyling/loop-worktree"><img src="https://img.shields.io/npm/v/@cobusgreyling/loop-worktree?label=loop-worktree" alt="loop-worktree npm"></a>
   <a href="https://github.com/cobusgreyling/loop-engineering/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT"></a>
   <a href="https://cobusgreyling.github.io/loop-engineering/"><img src="https://img.shields.io/badge/GitHub_Pages-live%20%7C%20interactive-3ee8c5" alt="Pages"></a>
 </p>
@@ -24,26 +28,38 @@
   </a>
 </p>
 
+> **Stop prompting. Design the loop. Get a score.**
+
 <p align="center">
   <img src="assets/visuals/LE5.jpeg" alt="Loop Engineering — design the system that prompts your agents" width="100%" />
 </p>
 
-**Loop engineering is replacing yourself as the person who prompts the agent. You design the system that does it instead.**
+```bash
+npx @cobusgreyling/loop-init .
+# Optional: also scaffold a versioned harness (harness-foundry)
+npx @cobusgreyling/loop-init . --with-foundry
+```
+
+`loop-init` scaffolds skills, state, and budget files, then prints your **Loop Ready** score and first loop command. Swap `--tool` for `claude`, `codex`, or `opencode`. Use `--with-foundry` when you want the loop as a composable runtime stack.
+
+<p align="center">
+  <a href="docs/QUICKSTART.md">
+    <img src="assets/visuals/loop-audit-demo.gif" alt="Loop Ready score climbs from 10 to 100 in 15 seconds" width="100%" />
+  </a>
+</p>
+
+Loop engineering replaces you as the person who prompts the agent — you design the system that does it instead.
 
 **New here?** [Quickstart (5 min)](docs/QUICKSTART.md) · [Interactive picker](https://cobusgreyling.github.io/loop-engineering/#interactive)
 
 For developers using Grok, Claude Code, Codex, Cursor, and other AI coding agents.
 
-A loop is a recursive goal: you define a purpose and the AI iterates (often with sub-agents, verification, and external state) until the goal is complete or the loop decides to hand off to you.
-
-
-
 <p align="center">
   <strong><a href="https://cobusgreyling.github.io/loop-engineering/">→ Interactive showcase + pattern picker</a></strong>
-  <br>
-  <strong><a href="https://cobusgreyling.substack.com/p/loop-engineering">→ Loop Engineering essay (Substack)</a></strong>
-  <br>
-  <a href="https://addyosmani.com/blog/loop-engineering/">Canonical essay by Addy Osmani</a>
+  ·
+  <a href="https://cobusgreyling.substack.com/p/loop-engineering">Essay</a>
+  ·
+  <a href="https://addyosmani.com/blog/loop-engineering/">Addy Osmani</a>
 </p>
 
 ## Contents
@@ -68,18 +84,51 @@ A loop is a recursive goal: you define a purpose and the AI iterates (often with
 | [Quickstart (5 min)](docs/QUICKSTART.md) | Scaffold → cost check → audit → first loop — **start here if you just landed** |
 | [Loop Engineering essay](https://cobusgreyling.substack.com/p/loop-engineering) | The concept, primitives, and Grok mapping — read for the why |
 | [Pattern Picker](docs/pattern-picker.md) | Which loop to run first — **start here if unsure** |
-| [Primitives Matrix](docs/primitives-matrix.md) | Grok vs Claude Code vs Codex — bookmark this |
+| [Primitives Matrix](docs/primitives-matrix.md) | Cross-tool loop primitive mapping — bookmark this |
 | [Loop Design Checklist](docs/loop-design-checklist.md) | Ship readiness rubric |
 | [Patterns](patterns/README.md) | 7 production patterns + [interactive picker](https://cobusgreyling.github.io/loop-engineering/#interactive) |
-| [Starters](starters/) | Clone-and-run kits (Grok, Claude Code, Codex) |
-| [loop-audit](tools/loop-audit/) | Loop Readiness Score CLI (v1.4 + activity detection) — `npx @cobusgreyling/loop-audit . --suggest` · `--badge` for README |
-| [loop-init](tools/loop-init/) | Scaffold starters + budget/run-log (v1.2) — `npx @cobusgreyling/loop-init . --pattern daily-triage --tool grok` |
+| [Starters](starters/) | Clone-and-run kits (Grok, Claude Code, Codex, Opencode) |
+| [Opencode examples](examples/opencode/) | CLI-first loops: cron/systemd + `opencode run`, skills, worktrees |
+| [loop-audit](tools/loop-audit/) | Loop Readiness Score CLI (v1.7 — constraints + governance + **Harness Runtime**) — `npx @cobusgreyling/loop-audit . --suggest` · `--badge` for README |
+| [loop-init](tools/loop-init/) | Scaffold starters + budget/run-log + constraints (v1.5) — `npx @cobusgreyling/loop-init . --pattern daily-triage --tool grok` · **`--with-foundry`** for harness stack |
+| [harness-foundry](https://github.com/cobusgreyling/harness-foundry) | **Companion runtime:** versioned stacks, sessions, traces — `npx @cobusgreyling/harness-foundry init --from loop-engineering:daily-triage` |
+| [outerloop](https://github.com/cobusgreyling/outerloop) | **Companion governance:** evidence → verdict → answerability |
 | [loop-cost](tools/loop-cost/) | Token spend estimator — `npx @cobusgreyling/loop-cost` |
-| [loop-sync](tools/loop-sync/) | Drift detection between `STATE.md` and `LOOP.md` — `node tools/loop-sync/dist/cli.js .` |
-| [loop-mcp-server](tools/mcp-server/) | MCP runtime lookup for patterns, skills, state — `node tools/mcp-server/dist/index.js` (repo v1; npm pending) |
-| [Goal Engineering](https://github.com/cobusgreyling/goal-engineering) | Companion: Grok Build `/goal` — run-until-done objectives (`npx @cobusgreyling/goal-audit`) |
+| [loop-sync](tools/loop-sync/) | Drift detection between `STATE.md` and `LOOP.md` — `npx @cobusgreyling/loop-sync .` |
+| [loop-context](tools/loop-context/) | Stateful memory manager + circuit breaker for long runs — `npx @cobusgreyling/loop-context --check --ledger run.json` |
+| [loop-mcp-server](tools/mcp-server/) | MCP runtime lookup for patterns, skills, state — `npx @cobusgreyling/loop-mcp-server` |
+| [loop-worktree](tools/loop-worktree/) | Manage isolated git worktrees per fix attempt — `npx @cobusgreyling/loop-worktree create --run-id <id> --pattern <p>` |
+| [loop-gate](tools/loop-gate/) | Mechanical enforcement of the path denylist + auto-merge allowlist from `gate.yaml` — `npx @cobusgreyling/loop-gate check --action auto-merge --paths <f1,f2,...>` |
+| [Goal Engineering](https://github.com/cobusgreyling/goal-engineering) | **Companion:** loops discover, goals finish — `/goal` + [stack cookbook](https://github.com/cobusgreyling/goal-engineering/blob/main/docs/stack-cookbook.md) (`npx @cobusgreyling/goal doctor .`) |
+| [Memory Engineering](https://github.com/cobusgreyling/memory-engineering) | **Companion:** stop re-explaining the repo — tiers, budget, Memory Ready score (`node tools/memory-init/cli.js .`) |
+| [Fleet Engineering](https://github.com/cobusgreyling/fleet-engineering) | **Companion:** govern populations of agents — registry, inbox, Fleet Ready score (`npx @cobusgreyling/fleet-init .`) |
 | [Stories](stories/) | Real wins and honest failures |
-| [Community update](https://github.com/cobusgreyling/loop-engineering/discussions/89) | **New:** 7 community PRs merged — loop-sync, constraints, MCP server |
+
+### Ecosystem stack
+
+```
+memory-engineering → loop-engineering → harness-foundry → outerloop → fleet-engineering
+   (persist)            (patterns)         (runtime)        (verdict)     (population)
+```
+
+| Layer | You get | Start |
+|-------|---------|--------|
+| **Memory** | Tiers, recall budget, Memory Ready score | [memory-engineering](https://github.com/cobusgreyling/memory-engineering) |
+| **Design** (this repo) | Patterns, starters, Loop Ready score | `npx @cobusgreyling/loop-init .` |
+| **Runtime** | Versioned harness, traces, evolve | `npx @cobusgreyling/loop-init . --with-foundry` or [Foundry showcase](https://github.com/cobusgreyling/harness-foundry/blob/main/docs/showcase.md) |
+| **Govern** | Evidence, verdict, answerability | [outerloop](https://github.com/cobusgreyling/outerloop) |
+| **Fleet** | Registry, inbox, budgets, kill switch | `npx @cobusgreyling/fleet-init .` · [Fleet Ready](https://github.com/cobusgreyling/fleet-engineering/blob/main/docs/fleet-ready-score.md) |
+
+**Scale beyond one loop:** when agents forget across sessions, add [memory-engineering](https://github.com/cobusgreyling/memory-engineering). When you have many agents/loops on a team, add [fleet-engineering](https://github.com/cobusgreyling/fleet-engineering).
+
+**Next after Loop Ready 80+:** version the loop as a harness — `loop-init` prints the CTA automatically; `loop-audit` recommends Foundry when the score is strong but `.foundry/stack.yaml` is missing.
+| [Contributor quickstart](https://github.com/cobusgreyling/loop-engineering/discussions/123) | **Help wanted:** 21 scoped `good first issues` — comment *I'll take this* to get assigned |
+| [Community update](https://github.com/cobusgreyling/loop-engineering/discussions/145) | **July 4:** 5.5k stars, traffic sources, contributor merges |
+| [Community week (Jul 8)](https://github.com/cobusgreyling/loop-engineering/discussions/219) | loop-worktree npm, MCP quickstart, tool appendices |
+| [npm update (Jul 16)](https://github.com/cobusgreyling/loop-engineering/discussions/294) | `loop-context` 1.2.0 + `loop-worktree` 1.1.0 — daily budget, path locks |
+| [Maintenance (Jul 10)](https://github.com/cobusgreyling/loop-engineering/discussions/241) | Doc sync, branch prune, loop-audit 1.6.0 follow-up |
+| [Prior release notes](https://github.com/cobusgreyling/loop-engineering/discussions/89) | v1.5.0 — loop-sync, constraints, MCP server |
+| [Add your project](https://github.com/cobusgreyling/loop-engineering/discussions/92) | **Pinned:** Loop Ready badge + adopters list |
 
 <p align="center">
   <img src="assets/visuals/section-divider.svg" alt="" width="100%" />
@@ -140,6 +189,8 @@ flowchart LR
 
 </details>
 
+Deeper diagrams — the actor-level sequence within one run, the run lifecycle's states, autonomy levels L1-L3, and how `tools/` maps onto the primitives — live in [docs/architecture-diagrams.md](docs/architecture-diagrams.md).
+
 **This reference repo now runs its own `validate-patterns` + `audit` workflows on every push/PR** (see `.github/workflows/`). We also added `LOOP.md` describing the loops that will maintain it.
 
 ## Patterns
@@ -165,13 +216,13 @@ Machine-readable index: [patterns/registry.yaml](patterns/registry.yaml) (7 patt
 ## Getting Started (5 minutes)
 
 ```bash
-# 1. Scaffold a starter (or copy manually — see starters/)
+# 1. Scaffold + get your Loop Ready score (printed automatically)
 npx @cobusgreyling/loop-init . --pattern daily-triage --tool grok
 
 # 2. Estimate token spend for your cadence
 npx @cobusgreyling/loop-cost --pattern daily-triage --level L1
 
-# 3. Audit readiness (budget + run-log now scored)
+# 3. Re-audit after improvements
 npx @cobusgreyling/loop-audit . --suggest
 
 # Optional: paste Loop Ready badge into your README
@@ -184,7 +235,7 @@ bash scripts/before-after-demo.sh
 /loop 1d Run loop-triage. Update STATE.md. No auto-fix in week one.
 ```
 
-All three CLIs publish to npm from tagged releases — see [docs/RELEASE.md](docs/RELEASE.md). No clone required.
+All npm CLIs publish from tagged releases — see [docs/RELEASE.md](docs/RELEASE.md). No clone required.
 
 **Develop from source** (monorepo contributors):
 
@@ -202,6 +253,7 @@ Phased rollout: **L1 report → L2 assisted fixes → L3 unattended** — see [l
 - [Claude Code](examples/claude-code/)
 - [Codex](examples/codex/)
 - [OpenClaw](examples/openclaw/daily-triage.md)
+- [Opencode](examples/opencode/)
 - [GitHub Actions](examples/github-actions/)
 
 ## Operating & Safety
@@ -227,9 +279,26 @@ Loop engineering amplifies judgment — both good and bad.
 Addy Osmani:
 > “Build the loop. But build it like someone who intends to stay the engineer, not just the person who presses go.”
 
+## Help wanted
+
+**First PR?** Start with the [contributor quickstart](https://github.com/cobusgreyling/loop-engineering/discussions/123) — ~10 min to ~1 hr tasks with same-day review on stories and adopters. See [CONTRIBUTORS.md](CONTRIBUTORS.md) for everyone who has shipped so far.
+
+| Pick one | Issue |
+|----------|-------|
+| ~10 min | [#120 — Add your project to adopters](https://github.com/cobusgreyling/loop-engineering/issues/120) |
+| ~15 min | [#118 — Daily Triage story](https://github.com/cobusgreyling/loop-engineering/issues/118) · [#173 — Issue Triage story](https://github.com/cobusgreyling/loop-engineering/issues/173) |
+| ~20 min | [#119 — PR Babysitter failure story](https://github.com/cobusgreyling/loop-engineering/issues/119) |
+| ~30 min | [#117 — Continue.dev](https://github.com/cobusgreyling/loop-engineering/issues/117) · [#147 — Cline](https://github.com/cobusgreyling/loop-engineering/issues/147) |
+| ~30 min | [#195 — Roo Code](https://github.com/cobusgreyling/loop-engineering/issues/195) · [#196 — GitHub Copilot](https://github.com/cobusgreyling/loop-engineering/issues/196) |
+| ~40 min | [#220 — Cursor CI Sweeper](https://github.com/cobusgreyling/loop-engineering/issues/220) · [#223 — Cursor Changelog Drafter](https://github.com/cobusgreyling/loop-engineering/issues/223) |
+| ~40 min | [#224 — Cursor Issue Triage](https://github.com/cobusgreyling/loop-engineering/issues/224) |
+| Hubs | [Show your loop](https://github.com/cobusgreyling/loop-engineering/discussions/326) · [Ask anything](https://github.com/cobusgreyling/loop-engineering/discussions/327) |
+
+Comment **"I'll take this"** on any [`good first issue`](https://github.com/cobusgreyling/loop-engineering/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) for assignment.
+
 ## Contributing
 
-Share production patterns, tool mappings, and failure stories. See [CONTRIBUTING.md](CONTRIBUTING.md), [adopters](docs/adopters.md), and [GitHub Discussions](https://github.com/cobusgreyling/loop-engineering/discussions).
+Share production patterns, tool mappings, and failure stories. See [CONTRIBUTING.md](CONTRIBUTING.md) (contribution ladder + [`good first issue` backlog](https://github.com/cobusgreyling/loop-engineering/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)), [Code of Conduct](CODE_OF_CONDUCT.md), [adopters](docs/adopters.md), and hubs: [Show your loop](https://github.com/cobusgreyling/loop-engineering/discussions/326) · [Ask anything](https://github.com/cobusgreyling/loop-engineering/discussions/327).
 
 ## Sources
 
@@ -254,11 +323,12 @@ MIT
 </p>
 
 <p align="center">
-  <a href="https://www.star-history.com/?repos=cobusgreyling%2Floop-engineering&type=timeline&legend=top-left">
+  <a href="https://cobusgreyling.github.io/loop-engineering/star-history.html">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=cobusgreyling/loop-engineering&type=timeline&theme=dark&legend=top-left" />
-      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=cobusgreyling/loop-engineering&type=timeline&legend=top-left" />
-      <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=cobusgreyling/loop-engineering&type=timeline&legend=top-left" />
+      <source media="(prefers-color-scheme: dark)" srcset="assets/visuals/star-history-dark.svg" />
+      <source media="(prefers-color-scheme: light)" srcset="assets/visuals/star-history.svg" />
+      <img alt="Star History Chart" src="assets/visuals/star-history.svg" />
     </picture>
   </a>
 </p>
+<p align="center"><sub>Static chart (CI-updated daily). <a href="https://cobusgreyling.github.io/loop-engineering/star-history.html">Live chart</a> needs a GitHub token — stored in your browser only.</sub></p>

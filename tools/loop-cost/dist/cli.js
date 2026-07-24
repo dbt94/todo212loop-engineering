@@ -3,7 +3,7 @@ import { readFile, access } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import yaml from 'yaml';
-import { assertValidLevel, estimateCost, formatEstimateHuman, } from './estimator.js';
+import { assertValidLevel, estimateCost, formatEstimateHuman, parseOrchestration, } from './estimator.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = path.resolve(__dirname, '..');
 function parseArgs(argv) {
@@ -13,6 +13,8 @@ function parseArgs(argv) {
     let conservative = false;
     let json = false;
     let list = false;
+    let orchestration = 'single';
+    let withCaching = false;
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
         if (a === '--pattern' || a === '-p')
@@ -21,16 +23,20 @@ function parseArgs(argv) {
             cadence = argv[++i];
         else if (a === '--level' || a === '-l')
             level = argv[++i];
+        else if (a === '--orchestration' || a === '-o')
+            orchestration = argv[++i];
         else if (a === '--conservative')
             conservative = true;
         else if (a === '--json')
             json = true;
         else if (a === '--list')
             list = true;
+        else if (a === '--with-caching')
+            withCaching = true;
         else if (a === '--help' || a === '-h')
             return { help: true };
     }
-    return { help: false, pattern, cadence, level, conservative, json, list };
+    return { help: false, pattern, cadence, level, conservative, json, list, orchestration, withCaching };
 }
 async function loadRegistry() {
     const candidates = [
@@ -63,13 +69,19 @@ Options:
   -p, --pattern <id>     Pattern id (default: daily-triage)
   -c, --cadence <spec>   Override cadence (e.g. 15m, 1d, 5m-15m)
   -l, --level <L1|L2|L3> Readiness level (default: L1)
+  -o, --orchestration <mode>
+                         Multi-agent action cost: single (default),
+                         maker-checker, parallel:N, debate:R
   --conservative         Use slower cadence from ranges (e.g. 15m not 5m)
+  --with-caching         Show estimate with prompt caching applied
+                         (requires stable_fraction in the pattern's cost block)
   --json                 Machine-readable output
   --list                 List pattern ids
   -h, --help             This help
 
 Examples:
   loop-cost --pattern ci-sweeper --cadence 15m --level L2
+  loop-cost --pattern ci-sweeper --level L2 --orchestration maker-checker
   loop-cost --pattern daily-triage --level L1 --json
   loop-cost --list
 `);
@@ -89,6 +101,7 @@ Examples:
     }
     try {
         assertValidLevel(args.level);
+        parseOrchestration(args.orchestration);
     }
     catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -104,6 +117,8 @@ Examples:
         cadence: args.cadence,
         level: args.level,
         conservative: args.conservative,
+        orchestration: args.orchestration,
+        withCaching: args.withCaching,
     });
     if (args.json)
         console.log(JSON.stringify(result, null, 2));

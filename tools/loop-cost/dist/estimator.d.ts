@@ -5,6 +5,10 @@ export interface PatternCost {
     tokens_noop: number;
     tokens_report: number;
     tokens_action: number;
+    /** Fraction (0.0-1.0) of report/action tokens that are stable, repeated
+     *  content (STATE.md, skills, system prompt) eligible for prompt caching.
+     *  Optional — patterns without it are treated as fully variable (0). */
+    stable_fraction?: number;
     suggested_daily_cap: number;
     early_exit_required: boolean;
 }
@@ -18,11 +22,31 @@ export interface RegistryPattern {
 export interface RegistryDoc {
     patterns: RegistryPattern[];
 }
+export interface Orchestration {
+    /** Normalized mode string, e.g. 'single', 'maker-checker', 'parallel:3', 'debate:2'. */
+    mode: string;
+    /** Multiplier applied to the action-path token cost. */
+    multiplier: number;
+}
+/**
+ * Parse an orchestration spec into a multiplier on the action path.
+ *
+ * The action path (implementer + verifier work) is where multi-agent
+ * orchestration lands; the no-op scan and single triage pass are unaffected.
+ *
+ *   single         1x   one implementer pass, self-checked (default)
+ *   maker-checker  2x   implementer + an independent verifier pass
+ *   parallel:N     N+1  N candidate agents fan out, plus a merge/arbiter pass
+ *   debate:R       1+R  one proposer plus R critique-and-revise rounds
+ */
+export declare function parseOrchestration(spec: string | undefined): Orchestration;
 export interface EstimateInput {
     pattern: RegistryPattern;
     cadence?: string;
     level: ReadinessLevel;
     conservative?: boolean;
+    orchestration?: string;
+    withCaching?: boolean;
 }
 export interface EstimateResult {
     patternId: string;
@@ -33,6 +57,7 @@ export interface EstimateResult {
     tokenCostTier: string;
     suggestedDailyCap: number;
     earlyExitRequired: boolean;
+    orchestration: Orchestration;
     scenarios: {
         noop: {
             tokensPerRun: number;
@@ -50,6 +75,11 @@ export interface EstimateResult {
             tokensPerRun: number;
             tokensPerDay: number;
             assumptions: string;
+        };
+        caching?: {
+            tokensPerRun: number;
+            tokensPerDay: number;
+            savingsPercent: number;
         };
     };
     warnings: string[];
