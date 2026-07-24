@@ -23,7 +23,7 @@ jobs:
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', github.event.inputs.tag) || github.ref }}
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v6
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
@@ -31,29 +31,17 @@ jobs:
           cache-dependency-path: tools/loop-audit/package-lock.json
 
       - name: Ensure npm supports trusted publishing (OIDC)
-        run: |
-          npm install -g npm@latest
-          npm install -g sigstore
+        run: npm install -g npm@latest
 
       - name: Install, build, test
         working-directory: tools/loop-audit
         run: |
-          # Build monorepo sibling first
-          (cd ../readiness-core && npm ci && npm run build)
           npm ci
           npm run build
           npm test
 
       - name: Publish to npm
         working-directory: tools/loop-audit
-        run: |
-          # Rewrite to registry version for publish
-          node -e "
-            const fs = require('fs');
-            const p = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            p.dependencies['@cobusgreyling/readiness-core'] = '^1.0.0';
-            fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');
-          "
-          npm publish --access public --provenance
+        run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
